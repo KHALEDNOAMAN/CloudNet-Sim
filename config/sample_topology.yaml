@@ -1,0 +1,8 @@
+nodes:
+  - name: web
+    type: host
+  - name: db
+    type: host
+links:
+  - node1: web
+    node2: db
