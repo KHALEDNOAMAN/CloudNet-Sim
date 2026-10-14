@@ -1,0 +1,63 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '0 6 * * 1'   # Monday, so a new CVE surfaces within a week
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+
+      # Every file must at least parse. This repo shipped a syntax error.
+      - name: compile
+        run: python -m compileall -q .
+
+      - name: lint
+        run: uvx ruff check --output-format github .
+
+      # Audit what the resolver actually picks, not what requirements.txt
+      # asks for. Pinning fastapi to a patched version still resolved a
+      # vulnerable starlette.
+      - name: audit dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            sed -E 's/[=<>!~].*//' requirements.txt | grep -E '^[A-Za-z]' > /tmp/u.txt
+            uv pip compile -q --no-header -o /tmp/resolved.txt /tmp/u.txt
+            uvx pip-audit -r /tmp/resolved.txt
+          fi
+
+      # Local semgrep rules, committed so the scan is reviewable and needs no
+      # network. These are the checks that caught the real problems: a
+      # hardcoded signing key, Flask debug on a public bind, and exceptions
+      # discarded with pass.
+      - name: semgrep
+        run: uvx semgrep scan --config=.semgrep.yml --error --metrics=off --quiet .
+
+      # requirements.txt states minimum safe versions. This is what actually
+      # gets installed, so this is what gets audited.
+      - name: lock is current
+        run: |
+          if [ -f requirements.txt ] && [ -f requirements.lock.txt ]; then
+            sed -E 's/[=<>!~].*//' requirements.txt | grep -E '^[A-Za-z]' > /tmp/u.txt
+            uv pip compile -q --no-header --python-version 3.11 -o /tmp/fresh.txt /tmp/u.txt
+            if ! diff -q <(grep -v '^#' requirements.lock.txt) <(grep -v '^#' /tmp/fresh.txt) >/dev/null; then
+              echo "::warning::requirements.lock.txt is behind what the resolver now picks. Regenerate it."
+            fi
+          fi
+
+      - name: tests
+        run: |
+          if ls tests/test_*.py >/dev/null 2>&1; then
+            uv venv && uv pip install -q -r requirements.txt pytest
+            uv run pytest -q
+          else
+            echo "no tests yet"
+          fi
