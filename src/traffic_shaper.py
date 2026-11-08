@@ -6,11 +6,13 @@ class TrafficShaper:
         self.links[link] = {"bandwidth": max_mbps}
         
     def set_latency(self, link, ms):
-        if link not in self.links: self.links[link] = {}
+        if link not in self.links:
+            self.links[link] = {}
         self.links[link]["latency"] = ms
         
     def set_packet_loss(self, link, percent):
-        if link not in self.links: self.links[link] = {}
+        if link not in self.links:
+            self.links[link] = {}
         self.links[link]["loss"] = percent
         
     def simulate_congestion(self, link):

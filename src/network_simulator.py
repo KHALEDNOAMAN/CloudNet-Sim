@@ -1,5 +1,6 @@
 import networkx as nx
 
+
 class NetworkSimulator:
     def __init__(self):
         self.graph = nx.Graph()
